@@ -1,9 +1,13 @@
+
 name: Build ARIA AI APK
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -16,19 +20,37 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - uses: android-actions/setup-android@v3
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          accept-android-sdk-licenses: true
+          packages: platform-tools
+
+      - name: Extract project
+        run: |
+          unzip -o ARIA_AI_Android_source.zip -d extracted
+          PROJECT_DIR="$(find extracted -type f \( -name settings.gradle -o -name settings.gradle.kts \) -print -quit | xargs -r dirname)"
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "Gradle settings file not found in ZIP"
+            unzip -l ARIA_AI_Android_source.zip
+            exit 1
+          fi
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+      - name: Install Android packages
+        run: |
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
 
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
 
-      - name: Extract project
-        run: unzip ARIA_AI_Android_source.zip -d .
-
       - name: Build APK
-        run: gradle -p ARIA_AI_Android assembleDebug
+        run: gradle -p "$PROJECT_DIR" assembleDebug --stacktrace
 
       - uses: actions/upload-artifact@v4
         with:
           name: ARIA-AI-APK
-          path: ARIA_AI_Android/app/build/outputs/apk/debug/app-debug.apk
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
